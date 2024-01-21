@@ -52,9 +52,13 @@
 
 #pragma once
 
-#include <Arduino.h>
-#include <Wire.h>
-#include <SPI.h>
+//Adjust include statements to include your specific board
+
+#include "stm32h7xx_hal_i2c.h"
+#include "stm32h7xx_hal_spi.h"
+#include "stm32h7xx_hal_uart.h"
+#include "stm32h7xx_hal.h"
+
 
 namespace SparkFun_UBLOX_GNSS
 {
@@ -97,9 +101,7 @@ namespace SparkFun_UBLOX_GNSS
   public:
     SfeI2C(void);
 
-    bool init(uint8_t address);
-
-    bool init(TwoWire &wirePort, uint8_t address, bool bInit = false);
+    bool init(I2C_HandleTypeDef &hi2c, uint8_t address);
 
     bool ping();
 
@@ -118,12 +120,11 @@ namespace SparkFun_UBLOX_GNSS
     uint8_t readBytes(uint8_t *data, uint8_t length);
 
   private:
-    TwoWire *_i2cPort;
+    I2C_HandleTypeDef *_i2cPort;
     uint8_t _address;
   };
 
-  // The SfeSPI class defines behavior for SPI implementation based around the SPIClass class (SPI).
-  // This is Arduino specific.
+  // SPI Class implementation using HAL SPI_HandleTypeDef
   // Note that writeBytes also reads bytes (into data)
   class SfeSPI : public GNSSDeviceBus
   {
@@ -132,9 +133,7 @@ namespace SparkFun_UBLOX_GNSS
 
     bool init(uint8_t cs);
 
-    bool init(SPIClass &spiPort, SPISettings &spiSettings, uint8_t cs, bool bInit = false);
-
-    bool init(SPIClass &spiPort, uint32_t spiSpeed, uint8_t cs, bool bInit = false);
+    bool init(SPI_HandleTypeDef &spiPort, SPI_InitTypeDef &spiSettings, uint8_t cs, bool bInit = false);
 
     bool ping() { return false; }
 
@@ -152,11 +151,17 @@ namespace SparkFun_UBLOX_GNSS
     uint8_t readBytes(uint8_t *data, uint8_t length);
 
   private:
-    SPIClass *_spiPort;
+    SPI_HandleTypeDef *_spiPort;
     // Settings are used for every transaction.
-    SPISettings _sfeSPISettings;
-    uint8_t _cs;
+    SPI_InitTypeDef _sfeSPISettings;
+    GPIO_TypeDef *_gpioPort;
+    uint16_t _cs;
   };
+
+
+
+//Unused 
+
 
   // The sfeSerial device defines behavior for Serial (UART) implementation based around the Stream class.
   // This is Arduino specific.
@@ -165,7 +170,7 @@ namespace SparkFun_UBLOX_GNSS
   public:
     SfeSerial(void);
 
-    bool init(Stream &serialPort);
+    bool init(UART_HandleTypeDef &serialPort);
 
     bool ping() { return false; }
 
@@ -184,7 +189,7 @@ namespace SparkFun_UBLOX_GNSS
     uint8_t readBytes(uint8_t *data, uint8_t length);
 
   private:
-    Stream *_serialPort;
+    UART_HandleTypeDef *_serialPort;
   };
 
   // The sfePrint device defines behavior for Serial diagnostic prints based around the Stream class.

@@ -50,7 +50,10 @@
 
 // sfe_bus.cpp
 
-#include <Arduino.h>
+#include "stm32h7xx_hal_i2c.h"
+#include "stm32h7xx_hal_spi.h"
+#include "stm32h7xx_hal_uart.h"
+#include "stm32h7xx_hal.h"
 #include "sfe_bus.h"
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -70,45 +73,40 @@ namespace SparkFun_UBLOX_GNSS
   // Methods to init/setup this device.
   // The caller can provide a Wire Port, or this class will use the default.
   // Always update the address in case the user has changed the I2C address - see Example9
-  bool SfeI2C::init(TwoWire &wirePort, uint8_t address, bool bInit)
+  bool SfeI2C::init(I2C_HandleTypeDef &hi2c, uint8_t address)
   {
-    // if we don't have a wire port already
-    if (!_i2cPort)
-    {
-      _i2cPort = &wirePort;
-
-      if (bInit)
-        _i2cPort->begin();
-    }
-
+ 
+    _i2cPort = &hi2c;
     _address = address;
 
     return true;
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
-  // I2C init()
+  // I2C init() - Unused
   //
   // Methods to init/setup this device.
   // The caller can provide a Wire Port, or this class will use the default.
+  /*
   bool SfeI2C::init(uint8_t address)
   {
     return init(Wire, address);
-  }
+  }*/
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // ping()
   //
   // Is a device connected?
-  bool SfeI2C::ping()
+  
+/*  MODIFIED  */
+  bool SfeI2C::ping() 
   {
+    if (_i2cPort == nullptr) {return false;}
 
-    if (!_i2cPort)
-      return false;
-
-    _i2cPort->beginTransmission(_address);
-    return _i2cPort->endTransmission() == 0;
+    if (HAL_I2C_IsDeviceReady(_i2cPort, _address, 2, 100) == HAL_OK) {return true;} // Device responded
+    else                                                             {return false;} // No response from the device
   }
+
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // available()
@@ -124,140 +122,123 @@ namespace SparkFun_UBLOX_GNSS
   //  is already pointing at register 0xFF, the highest addressable register, in which case it remains
   //  unaltered."
 
+/*  MODIFIED  */
   uint16_t SfeI2C::available()
   {
+    if (_i2cPort == nullptr)
+    {
+      return 0;
+    }
 
-    if (!_i2cPort)
-      return false;
-
-    // Get the number of bytes available from the module
+    uint8_t reg = 0xFD;
     uint16_t bytesAvailable = 0;
-    _i2cPort->beginTransmission(_address);
-    _i2cPort->write(0xFD);                               // 0xFD (MSB) and 0xFE (LSB) are the registers that contain number of bytes available
-    uint8_t i2cError = _i2cPort->endTransmission(false); // Always send a restart command. Do not release the bus. ESP32 supports this.
-    if (i2cError != 0)
-    {
-      return (0); // Sensor did not ACK
-    }
+    uint8_t buffer[2] = {0, 0};
 
-    // Forcing requestFrom to use a restart would be unwise. If bytesAvailable is zero, we want to surrender the bus.
-    uint16_t bytesReturned = _i2cPort->requestFrom(_address, static_cast<uint8_t>(2));
-    if (bytesReturned != 2)
+    // Transmit the register address we want to read from
+    if (HAL_I2C_Master_Transmit(_i2cPort, _address, &reg, 1, 100) != HAL_OK)
     {
-      return (0); // Sensor did not return 2 bytes
-    }
-    else // if (_i2cPort->available())
-    {
-      uint8_t msb = _i2cPort->read();
-      uint8_t lsb = _i2cPort->read();
-      bytesAvailable = (uint16_t)msb << 8 | lsb;
-    }
+      return 0;
+    } // Transmission error
 
-    return (bytesAvailable);
+    // Receive 2 bytes of data
+    if (HAL_I2C_Master_Receive(_i2cPort, _address, buffer, 2, 100) != HAL_OK)
+    {
+      return 0;
+    } // Receive error
+
+    bytesAvailable = (uint16_t)(buffer[0] << 8 | buffer[1]);
+    return bytesAvailable;
   }
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // writeBytes()
 
-  uint8_t SfeI2C::writeBytes(uint8_t *dataToWrite, uint8_t length)
+/*  MODIFIED  */
+  uint8_t SfeI2C::writeBytes(uint8_t *dataToWrite, uint8_t length) 
   {
-    if (!_i2cPort)
+    if (_i2cPort == nullptr || length == 0)
       return 0;
 
-    if (length == 0)
-      return 0;
+    HAL_StatusTypeDef result = HAL_I2C_Master_Transmit(_i2cPort, _address, dataToWrite, length, 100);
 
-    _i2cPort->beginTransmission(_address);
-    uint8_t written = _i2cPort->write((const uint8_t *)dataToWrite, length);
-    if (_i2cPort->endTransmission() == 0)
-      return written;
-
-    return 0;
+    if (result == HAL_OK) {return length;}
+    else                  {return 0;} // Transmission failed
   }
+
 
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // readBytes()
 
-  uint8_t SfeI2C::readBytes(uint8_t *data, uint8_t length)
+/*  MODIFIED  */
+  uint8_t SfeI2C::readBytes(uint8_t *data, uint8_t length) 
   {
-    if (!_i2cPort)
+    if (_i2cPort == nullptr || length == 0)
       return 0;
 
-    if (length == 0)
-      return 0;
+    HAL_StatusTypeDef result = HAL_I2C_Master_Receive(_i2cPort, _address, data, length, 100); // 100ms timeout
 
-    uint8_t bytesReturned = _i2cPort->requestFrom(_address, length);
-
-    for (uint8_t i = 0; i < bytesReturned; i++)
-      *data++ = _i2cPort->read();
-
-    return bytesReturned;
+    if (result == HAL_OK) {return length;} // If HAL_OK, all requested bytes were successfully read
+    else                  {return 0;} // If there was an error, return 0
   }
+
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Constructor
   //
 
-  SfeSPI::SfeSPI(void) : _spiPort{nullptr}
-  {
-  }
+  SfeSPI::SfeSPI(void) : _spiPort{nullptr}{}
 
   ////////////////////////////////////////////////////////////////////////////////////////////////
   // SPI init()
   //
-  // Methods to init/setup this device. The caller can provide a SPI Port, or this class
-  // will use the default
 
-  bool SfeSPI::init(SPIClass &spiPort, SPISettings &ismSPISettings, uint8_t cs, bool bInit)
+/*  MODIFIED  */
+  bool SfeSPI::init(SPI_HandleTypeDef &spiPort, SPI_InitTypeDef spiSettings, GPIO_TypeDef &gpioPort, uint16_t cs, bool bInit)
   {
-
-    // if we don't have a SPI port already
     if (!_spiPort)
     {
       _spiPort = &spiPort;
+      _sfeSPISettings = spiSettings;
 
       if (bInit)
-        _spiPort->begin();
+      {
+        // Apply the settings provided by spiSettings
+        _spiPort->Init = spiSettings;
+
+        // Initialize the SPI peripheral
+        if (HAL_SPI_Init(_spiPort) != HAL_OK)
+        {
+          // Initialization failed
+          return false;
+        }
+      }
     }
 
-    // SPI settings are needed for every transaction
-    _sfeSPISettings = ismSPISettings;
-
-    // The chip select pin can vary from platform to platform and project to project
-    // and so it must be given by the user.
-    if (!cs)
-      return false;
-
-    _cs = cs;
-
-    // Initialize the chip select pin
-    pinMode(_cs, OUTPUT);
-    digitalWrite(_cs, HIGH);
-
+    _cs = cs; // Chip Select pin
+    _gpioPort = &gpioPort;
     return true;
   }
 
-  ////////////////////////////////////////////////////////////////////////////////////////////////
-  // SPI init()
-  //
-  // Methods to init/setup this device. The caller can provide a SPI Port, or this class
-  // will use the default
-  bool SfeSPI::init(uint8_t cs)
+/*  MODIFIED  */
+  /*bool SfeSPI::init(SPI_HandleTypeDef &spiPort, uint8_t cs) 
   {
+    // Define default SPI settings
+    uint32_t spiSpeed = SPI_BAUDRATEPRESCALER_16; // Example prescaler value, adjust as needed
 
-    // If the transaction settings are not provided by the user they are built here.
-    SPISettings spiSettings = SPISettings(4000000, MSBFIRST, SPI_MODE0);
+    // Call the full init function with the default SPI port and settings
+    return init(spiPort, spiSpeed, cs, true);
+  }*/
 
-    // In addition of the port is not provided by the user, it defaults to SPI here.
-    return init(SPI, spiSettings, cs);
-  }
 
   ////////////////////////////////////////////////////////////////////////////////////////////////
   // SPI init()
   //
   // Methods to init/setup this device. The caller can provide a SPI Port, or this class
   // will use the default
-  bool SfeSPI::init(SPIClass &spiPort, uint32_t spiSpeed, uint8_t cs, bool bInit)
+  
+/*  MODIFIED  */
+/*
+  bool SfeSPI::init(SPI_HandleTypeDef &spiPort, uint32_t spiSpeed, uint8_t cs, bool bInit)
   {
 
     // If the transaction settings are not provided by the user they are built here.
@@ -265,140 +246,125 @@ namespace SparkFun_UBLOX_GNSS
 
     // In addition of the port is not provided by the user, it defaults to SPI here.
     return init(spiPort, spiSettings, cs, bInit);
-  }
+  }*/
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // available()
   //
   // available isn't applicable for SPI
 
-  uint16_t SfeSPI::available()
-  {
-    return (0);
-  }
+  uint16_t SfeSPI::available() {return (0);}
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // writeBytes()
 
+/*  MODIFIED  */
   uint8_t SfeSPI::writeBytes(uint8_t *data, uint8_t length)
   {
-    if (!_spiPort)
+    if (!_spiPort || length == 0)
       return 0;
-
-    if (length == 0)
-      return 0;
-
-    uint8_t i;
-
-    // Apply settings
-    _spiPort->beginTransaction(_sfeSPISettings);
 
     // Signal communication start
-    digitalWrite(_cs, LOW);
+    HAL_GPIO_WritePin(_gpioPort, _cs, GPIO_PIN_RESET);
 
-    for (i = 0; i < length; i++)
+    // Transmit data
+    if (HAL_SPI_Transmit(_spiPort, data, length, HAL_MAX_DELAY) == HAL_OK)
     {
-      _spiPort->transfer(*data++);
+      // Signal end of communication
+      HAL_GPIO_WritePin(_gpioPort, _cs, GPIO_PIN_SET);
+      return length;
     }
 
-    // End communication
-    digitalWrite(_cs, HIGH);
-    _spiPort->endTransaction();
-
-    return i;
+    HAL_GPIO_WritePin(_gpioPort, _cs, GPIO_PIN_SET);
+    return 0;
   }
 
-  ////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  // readBytes()
-
+/*  MODIFIED  */
   uint8_t SfeSPI::readBytes(uint8_t *data, uint8_t length)
   {
-    if (!_spiPort)
+    if (!_spiPort || length == 0)
       return 0;
 
-    if (length == 0)
-      return 0;
-
-    uint8_t i; // counter in loop
-
-    // Apply settings
-    _spiPort->beginTransaction(_sfeSPISettings);
+    uint8_t dummyData = 0xFF;
+    uint8_t readData[length];
 
     // Signal communication start
-    digitalWrite(_cs, LOW);
+    HAL_GPIO_WritePin(_gpioPort, _cs, GPIO_PIN_RESET);
 
-    for (i = 0; i < length; i++)
+    // Receive data
+    if (HAL_SPI_TransmitReceive(_spiPort, &dummyData, readData, length, HAL_MAX_DELAY) == HAL_OK)
     {
-      *data++ = _spiPort->transfer(0xFF);
+      memcpy(data, readData, length);
+      // Signal end of communication
+      HAL_GPIO_WritePin(_gpioPort, _cs, GPIO_PIN_SET);
+      return length;
     }
 
-    // End transaction
-    digitalWrite(_cs, HIGH);
-    _spiPort->endTransaction();
-
-    return i;
+    HAL_GPIO_WritePin(_gpioPort, _cs, GPIO_PIN_SET);
+    return 0;
   }
 
-  ////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  // writeReadBytes()
-
+/*  MODIFIED  */
   uint8_t SfeSPI::writeReadBytes(const uint8_t *data, uint8_t *readData, uint8_t length)
   {
-    if (!_spiPort)
+    if (!_spiPort || length == 0)
       return 0;
-
-    if (length == 0)
-      return 0;
-
-    uint8_t i; // counter in loop
-
-    // Apply settings
-    _spiPort->beginTransaction(_sfeSPISettings);
 
     // Signal communication start
-    digitalWrite(_cs, LOW);
+    HAL_GPIO_WritePin(_gpioPort, _cs, GPIO_PIN_RESET);
 
-    for (i = 0; i < length; i++)
+    // Transmit and receive data
+    if (HAL_SPI_TransmitReceive(_spiPort, (uint8_t *)data, readData, length, HAL_MAX_DELAY) == HAL_OK)
     {
-      *readData = _spiPort->transfer(*data);
-      data++;
-      readData++;
+      // Signal end of communication
+      HAL_GPIO_WritePin(_gpioPort, _cs, GPIO_PIN_SET);
+      return length;
     }
 
-    // End transaction
-    digitalWrite(_cs, HIGH);
-    _spiPort->endTransaction();
-
-    return i;
+    HAL_GPIO_WritePin(_gpioPort, _cs, GPIO_PIN_SET);
+    return 0;
   }
 
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // writeReadBytes()
 
-  void SfeSPI::startWriteReadByte() // beginTransaction
-  {
-    if (!_spiPort)
-      return;
+/*  MODIFIED  */
+void SfeSPI::startWriteReadByte() // beginTransaction
+{
+  if (!_spiPort)
+    return;
 
-    // Apply settings
-    _spiPort->beginTransaction(_sfeSPISettings);
+    // No need to apply settings as HAL_SPI_Init should have already been called
 
-    // Signal communication start
-    digitalWrite(_cs, LOW);
-  }
-  void SfeSPI::writeReadByte(const uint8_t *data, uint8_t *readData)
-  {
-    *readData = _spiPort->transfer(*data);
-  }
-  void SfeSPI::writeReadByte(const uint8_t data, uint8_t *readData)
-  {
-    *readData = _spiPort->transfer(data);
-  }
-  void SfeSPI::endWriteReadByte() // endTransaction
-  {
-    digitalWrite(_cs, HIGH);
-    _spiPort->endTransaction();
-  }
+    // Signal communication start by pulling CS low
+  HAL_GPIO_WritePin(_gpioPort, _cs, GPIO_PIN_RESET);
+}
+
+void SfeSPI::writeReadByte(const uint8_t *data, uint8_t *readData) 
+{
+  if (!_spiPort)
+    return;
+
+  HAL_SPI_TransmitReceive(_spiPort, (uint8_t *)data, readData, 1, HAL_MAX_DELAY);
+}
+
+void SfeSPI::writeReadByte(const uint8_t data, uint8_t *readData) 
+{
+  if (!_spiPort)
+    return;
+
+  HAL_SPI_TransmitReceive(_spiPort, (uint8_t *)&data, readData, 1, HAL_MAX_DELAY);
+}
+
+void SfeSPI::endWriteReadByte() 
+{
+    // Raise CS to end the transaction
+  HAL_GPIO_WritePin(_gpioPort, _cs, GPIO_PIN_SET);
+}
+
+
+//UART Functionalites Left out
+
 
   //////////////////////////////////////////////////////////////////////////////////////////////////
   // Constructor
@@ -413,7 +379,7 @@ namespace SparkFun_UBLOX_GNSS
   //
   // Methods to init/setup this device
 
-  bool SfeSerial::init(Stream &serialPort)
+  bool SfeSerial::init(UART_HandleTypeDef &serialPort)
   {
     // if we don't have a port already
     if (!_serialPort)

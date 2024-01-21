@@ -48,7 +48,7 @@
   SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#include <Arduino.h>
+
 #include "u-blox_GNSS.h"
 
 DevUBLOXGNSS::DevUBLOXGNSS(void)
@@ -1132,7 +1132,7 @@ bool DevUBLOXGNSS::checkUbloxInternal(ubxPacket *incomingUBX, uint8_t requestedC
 // Returns true if new bytes are available
 bool DevUBLOXGNSS::checkUbloxI2C(ubxPacket *incomingUBX, uint8_t requestedClass, uint8_t requestedID)
 {
-  if (millis() - lastCheck >= i2cPollingWait)
+  if (HAL_GetTick() - lastCheck >= i2cPollingWait)
   {
     // Get the number of bytes available from the module
     // From the u-blox integration manual:
@@ -1152,7 +1152,7 @@ bool DevUBLOXGNSS::checkUbloxI2C(ubxPacket *incomingUBX, uint8_t requestedClass,
       //         _debugSerial.println(F("checkUbloxI2C: OK, zero bytes available"));
       //       }
       // #endif
-      lastCheck = millis(); // Put off checking to avoid I2C bus traffic
+      lastCheck = HAL_GetTick(); // Put off checking to avoid I2C bus traffic
       return (false);
     }
 
@@ -1270,7 +1270,7 @@ bool DevUBLOXGNSS::checkUbloxSpi(ubxPacket *incomingUBX, uint8_t requestedClass,
   if ((byteReturned == 0xFF) && (currentSentence == SFE_UBLOX_SENTENCE_TYPE_NONE))
   {
     endWriteReadByte();
-    delay(spiPollingWait);
+    HAL_Delay(spiPollingWait);
     return (retVal);
   }
 
@@ -1566,7 +1566,7 @@ void DevUBLOXGNSS::process(uint8_t incoming, ubxPacket *incomingUBX, uint8_t req
     storedID = requestedID;
   }
 
-  _outputPort.write(incoming); // Echo this byte to the serial port
+  //_outputPort.write(incoming); // Echo this byte to the serial port
 
   if ((currentSentence == SFE_UBLOX_SENTENCE_TYPE_NONE) || (currentSentence == SFE_UBLOX_SENTENCE_TYPE_NMEA))
   {
@@ -1828,8 +1828,8 @@ void DevUBLOXGNSS::process(uint8_t incoming, ubxPacket *incomingUBX, uint8_t req
 
     // If user has assigned an output port then pipe the characters there,
     // but only if the port is different (otherwise we'll output each character twice!)
-    if (_outputPort != _ubxOutputPort)
-      _ubxOutputPort.write(incoming); // Echo this byte to the serial port
+    //if (_outputPort != _ubxOutputPort)
+      //_ubxOutputPort.write(incoming); // Echo this byte to the serial port
 
     // Finally, increment the frame counter
     ubxFrameCounter++;
@@ -1890,8 +1890,8 @@ void DevUBLOXGNSS::process(uint8_t incoming, ubxPacket *incomingUBX, uint8_t req
           processNMEA(nmeaAddressField[i]); // Process the start character and address field
           // If user has assigned an output port then pipe the characters there,
           // but only if the port is different (otherwise we'll output each character twice!)
-          if (_outputPort != _nmeaOutputPort)
-            _nmeaOutputPort.write(nmeaAddressField[i]); // Echo this byte to the serial port
+          //if (_outputPort != _nmeaOutputPort)
+            //_nmeaOutputPort.write(nmeaAddressField[i]); // Echo this byte to the serial port
         }
       }
     }

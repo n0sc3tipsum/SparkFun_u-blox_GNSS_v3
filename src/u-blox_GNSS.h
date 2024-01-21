@@ -83,7 +83,6 @@
 #define SFE_UBLOX_DISABLE_RAWX_SFRBX_PMP_QZSS_SAT
 #endif
 
-#include <Arduino.h>
 #include "u-blox_config_keys.h"
 #include "u-blox_structs.h"
 #include "u-blox_external_typedefs.h"
@@ -110,6 +109,7 @@ protected:
     COMM_TYPE_SERIAL,
     COMM_TYPE_SPI
   } _commType = COMM_TYPE_I2C; // Controls which port we look to for incoming bytes
+  
   bool init(uint16_t maxWait, bool assumeSuccess);
   void setCommunicationBus(SparkFun_UBLOX_GNSS::GNSSDeviceBus &theBus);
   // For I2C, ping the _address
